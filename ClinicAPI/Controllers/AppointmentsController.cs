@@ -87,5 +87,26 @@ namespace ClinicAPI.Controllers
                 return Conflict();
             }
         }
+
+        [HttpDelete("{id:int}")]
+        public async Task<IActionResult> DeleteAppointment(int id, CancellationToken ct)
+        {
+            try
+            {
+                var result = await service.DeleteAppointmentAsync(id, ct);
+                if (result == 0)
+                {
+                    return NotFound();
+                }
+                else
+                {
+                    return NoContent();
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                return Conflict();
+            }
+        }
     }
 }

@@ -213,4 +213,37 @@ public class AppointmentService(IConfiguration configuration) : IAppointmentServ
 
         return updateResult;
     }
+
+    public async Task<int> DeleteAppointmentAsync(int id, CancellationToken ct = default)
+    {
+        await using var connection = new SqlConnection(configuration.GetConnectionString("Default"));
+        await connection.OpenAsync(ct);
+
+        var check = "SELECT Status FROM dbo.Appointments WHERE IdAppointment = @IdAppointment;";
+        await using var checkCommand = new SqlCommand(check, connection);
+        checkCommand.Parameters.Add(new SqlParameter("@IdAppointment", id));
+        
+        string status = string.Empty;
+
+        await using (var reader = await checkCommand.ExecuteReaderAsync(ct))
+        {
+            if (!await reader.ReadAsync(ct))
+            {
+                return 0;
+            }
+            status = reader.GetString(0);
+        }
+
+        if (status == "Completed")
+        {
+            throw new InvalidOperationException("Nie mozna usunąć completed wizyty");
+        }
+        
+        var delete = "DELETE FROM dbo.Appointments WHERE IdAppointment = @IdAppointment;";
+        await using var deleteCommand = new SqlCommand(delete, connection);
+        deleteCommand.Parameters.Add(new SqlParameter("@IdAppointment", id));
+        
+        var deleteResult = await deleteCommand.ExecuteNonQueryAsync(ct);
+        return deleteResult;
+    }
 }
