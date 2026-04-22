@@ -133,4 +133,84 @@ public class AppointmentService(IConfiguration configuration) : IAppointmentServ
         return insertResult;
 
     }
+
+    public async Task<int> UpdateAppointmentAsync(int id, UpdateAppointmentDto updateAppointmentDto, CancellationToken ct = default)
+    {
+        await using var connection = new SqlConnection(configuration.GetConnectionString("Default"));
+        await connection.OpenAsync(ct);
+
+        var getAppointment =
+            "SELECT Status, AppointmentDate FROM dbo.Appointments WHERE IdAppointment = @IdAppointment;";
+        var getAppointmentCommand = new SqlCommand(getAppointment, connection);
+        getAppointmentCommand.Parameters.Add(new SqlParameter("@IdAppointment", id));
+
+        string status =  string.Empty;
+        DateTime date = new DateTime();
+
+        await using (var reader = await getAppointmentCommand.ExecuteReaderAsync(ct))
+        {
+            if (!await reader.ReadAsync(ct))
+            {
+                return 0;
+            }
+            status = reader.GetString(0);
+            date = reader.GetDateTime(1);
+        }
+        
+
+        if (status == "Completed" && date != updateAppointmentDto.AppointmentDate)
+        {
+            throw new ArgumentException("Błąd status to completed lub data jest już zakończona");
+        }
+
+        var patientCheck = "SELECT 1 FROM dbo.Patients WHERE IdPatient = @IdPatient AND IsActive = 1;";
+        await using var patientCheckCommand = new SqlCommand(patientCheck, connection);
+        patientCheckCommand.Parameters.Add(new SqlParameter("@IdPatient", updateAppointmentDto.PatientId));
+        if (await patientCheckCommand.ExecuteScalarAsync(ct) == null)
+        {
+            throw new ArgumentException("Pacjent nie istnieje lub nie jest aktywny");
+        }
+        
+        var doctorCheck = "SELECT 1 FROM dbo.Doctors WHERE IdDoctor = @IdDoctor AND IsActive = 1;";
+        await using var doctorCheckCommand = new SqlCommand(doctorCheck, connection);
+        doctorCheckCommand.Parameters.Add(new SqlParameter("@IdDoctor", updateAppointmentDto.DoctorId));
+        if (await doctorCheckCommand.ExecuteScalarAsync(ct) == null)
+        {
+            throw new ArgumentException("Doktor nie istnieje lub nie jest aktywny");
+        }
+        
+        var conflictCheck =
+            "SELECT 1 FROM dbo.Appointments WHERE IdDoctor = @IdDoctor AND AppointmentDate = @AppointmentDate AND IdAppointment != @IdAppointment;";
+        await using var conflictCommand = new SqlCommand(conflictCheck,connection);
+        conflictCommand.Parameters.Add(new SqlParameter("@IdDoctor", updateAppointmentDto.DoctorId));
+        conflictCommand.Parameters.Add(new SqlParameter("@AppointmentDate", updateAppointmentDto.AppointmentDate));
+        conflictCommand.Parameters.Add(new SqlParameter("@IdAppointment", id));
+        if (await conflictCommand.ExecuteScalarAsync(ct) != null)
+        {
+            throw new InvalidOperationException("Błąd! Konflikt!");
+        }
+        
+        var update =@"
+        UPDATE dbo.Appointments
+        SET IdPatient = @IdPatient,
+            IdDoctor = @IdDoctor,
+            AppointmentDate = @AppointmentDate,
+            Status = @Status,
+            Reason = @Reason,
+            InternalNotes = @InternalNotes
+        WHERE IdAppointment = @IdAppointment;";
+
+        await using var updateCommand = new SqlCommand(update, connection);
+        updateCommand.Parameters.Add(new SqlParameter("@IdPatient", updateAppointmentDto.PatientId));
+        updateCommand.Parameters.Add(new SqlParameter("@IdDoctor", updateAppointmentDto.DoctorId));
+        updateCommand.Parameters.Add(new SqlParameter("@AppointmentDate", updateAppointmentDto.AppointmentDate));
+        updateCommand.Parameters.Add(new SqlParameter("@Status", updateAppointmentDto.Status));
+        updateCommand.Parameters.Add(new SqlParameter("@Reason", updateAppointmentDto.Reason));
+        updateCommand.Parameters.Add(new SqlParameter("@InternalNotes", (object?)updateAppointmentDto.InternalNotes ?? DBNull.Value));
+        updateCommand.Parameters.Add(new SqlParameter("@IdAppointment", id));
+        
+        var updateResult = await updateCommand.ExecuteNonQueryAsync(ct);
+
+        return updateResult;
+    }
 }

@@ -61,5 +61,31 @@ namespace ClinicAPI.Controllers
                 return BadRequest();
             }
         }
+
+        [HttpPut("{id:int}")]
+        public async Task<IActionResult> UpdateAppointment(int id, [FromBody] UpdateAppointmentDto dto,
+            CancellationToken ct)
+        {
+            try
+            {
+                var result = await service.UpdateAppointmentAsync(id, dto, ct);
+                if (result == 0)
+                {
+                    return NotFound();
+                }
+                else
+                {
+                    return Ok("Updated!");
+                }
+            }
+            catch (ArgumentException)
+            {
+                return BadRequest();
+            }
+            catch (InvalidOperationException)
+            {
+                return Conflict();
+            }
+        }
     }
 }
