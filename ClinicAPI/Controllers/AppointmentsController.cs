@@ -30,5 +30,36 @@ namespace ClinicAPI.Controllers
                 return NotFound();
             }
         }
+
+        [HttpPost]
+        public async Task<IActionResult> CreateAppointment([FromBody] CreateAppointmentDto dto, CancellationToken ct)
+        {
+            if (dto.AppointmentDate < DateTime.Now)
+            {
+                return BadRequest("Wprowadzony termin jest w przeszłości!");
+            }
+
+            try
+            {
+                var inserted = await service.AddAppointmentAsync(dto, ct);
+                if (inserted == 1)
+                {
+                    return Created();
+                }
+                else
+                {
+                    return BadRequest();
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                return Conflict();
+            }
+            catch(ArgumentException)
+
+            {
+                return BadRequest();
+            }
+        }
     }
 }

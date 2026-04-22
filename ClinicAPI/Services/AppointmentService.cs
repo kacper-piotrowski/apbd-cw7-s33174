@@ -86,4 +86,51 @@ public class AppointmentService(IConfiguration configuration) : IAppointmentServ
 
         return result;
     }
+
+    public async Task<int> AddAppointmentAsync(CreateAppointmentDto createAppointmentDto, CancellationToken ct = default)
+    {
+        await using var connection = new SqlConnection(configuration.GetConnectionString("Default"));
+        await connection.OpenAsync(ct);
+        
+        var patientCheck = "SELECT 1 FROM dbo.Patients WHERE IdPatient = @IdPatient AND IsActive = 1;";
+        await using var patientCommand = new SqlCommand(patientCheck, connection);
+        patientCommand.Parameters.Add(new SqlParameter("@IdPatient", createAppointmentDto.PatientId));
+        if (await patientCommand.ExecuteScalarAsync(ct) == null)
+        {
+            throw new ArgumentException("Błąd! Pacjent nie istnieje lub jest nieaktywny");
+        }
+        
+        var doctorCheck = "SELECT 1 FROM dbo.Doctors WHERE IdDoctor = @IdDoctor AND IsActive = 1;";
+        await using var doctorCommand = new SqlCommand(doctorCheck,connection);
+        doctorCommand.Parameters.Add(new SqlParameter("@IdDoctor", createAppointmentDto.DoctorId));
+        if (await doctorCommand.ExecuteScalarAsync(ct) == null)
+        {
+            throw new ArgumentException("Błąd! Doktor nie istnieje lub jest nieaktywny");
+        }
+
+        var conflictCheck =
+            "SELECT 1 FROM dbo.Appointments WHERE IdDoctor = @IdDoctor AND AppointmentDate = @AppointmentDate;";
+        await using var conflictCommand = new SqlCommand(conflictCheck,connection);
+        conflictCommand.Parameters.Add(new SqlParameter("@IdDoctor", createAppointmentDto.DoctorId));
+        conflictCommand.Parameters.Add(new SqlParameter("@AppointmentDate", createAppointmentDto.AppointmentDate));
+        if (await conflictCommand.ExecuteScalarAsync(ct) != null)
+        {
+            throw new InvalidOperationException("Błąd! Konflikt!");
+        }
+
+        var insert = @"
+        INSERT INTO dbo.Appointments (IdPatient, IdDoctor, AppointmentDate, Reason, Status)
+        VALUES (@IdPatient, @IdDoctor, @AppointmentDate, @Reason, 'Scheduled');";
+        
+        await using var insertCommand = new SqlCommand(insert, connection);
+        insertCommand.Parameters.Add(new SqlParameter("@IdPatient", createAppointmentDto.PatientId));
+        insertCommand.Parameters.Add(new SqlParameter("@IdDoctor", createAppointmentDto.DoctorId));
+        insertCommand.Parameters.Add(new SqlParameter("@AppointmentDate", createAppointmentDto.AppointmentDate));
+        insertCommand.Parameters.Add(new SqlParameter("@Reason", createAppointmentDto.Reason));
+
+        var insertResult = await insertCommand.ExecuteNonQueryAsync(ct);
+
+        return insertResult;
+
+    }
 }
